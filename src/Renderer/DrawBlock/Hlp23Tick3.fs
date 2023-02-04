@@ -25,8 +25,8 @@ open Symbol
 
 /// submodule for constant definitions used in this module
 module Constants =
-    let xxx = 111 // sample constant definition (with bad name) delete and replace
-                  // your constants. Delete this comment as well!
+    let houseH = 111.0
+    let houseL = 111.0
 
 /// Record containing BusWire helper functions that might be needed by updateWireHook
 /// functions are fed in at the updatewireHook function call in BusWireUpdate.
@@ -50,6 +50,81 @@ type Tick3BusWireHelpers = {
 /// displayed on screen.
 //  for Tick 3 see the Tick 3 Powerpoint for what you need to do.
 //  the house picture, and its dependence on the two parameters, will be assessed via interview.
+
+// this function takes in the distance between the centers of the windows 
+// and the number of windows (which will be the actual number divided 
+// by 2). It returns a list of offsets from the center (which are all the 
+// windows centers on one side. This will be flipped appropriately to make the 
+// complete set of windows.
+let rec zip (a,b) = 
+    match (a, b) with
+    | ha :: _, hb :: _ when a.Length = 1 & b.Length = 1 -> [(ha, hb)]
+    | ha :: ta, hb :: tb -> (ha, hb) @ zip (ta, tb)
+
+// returns a grid of coordinate offsets for the centres of all the windows in the grid 
+// could return window objects (that is something that puts together the lines of a window already)
+// ie a react element list 
+let windows gridH gridV h v = 
+    let makeCentres (graph:float) (n:int) : float list = 
+        ([0.0], [0..n]) ||> List.fold (fun centres _ -> [List.head centres + graph] @ centers)
+        |> List.rev
+
+    let makeFullLine (centres: float list) (nTot: int) (grid: float) : float list = 
+        let flipCentres (lst: float list) = 
+            lst
+            |> List.map (fun x -> -x)
+            |> List.rev
+        let offsetCentres (lst: float list) = 
+            List.map (fun x -> x + (grid/ 2.0)) lst
+        match nTot with 
+        // if odd leave them as is and duplicate all of them apart from the first, reverse and put at beginning
+        | odd when nTot % 2 = 1 -> List.tail >> flipCentres centres @ centres
+        // if even add half the offset then reverse and append 
+        | even -> offsetCentres >> flipCentres centres @ (offsetCentres centres)
+
+    let makeGrid centres isHzntl  = 
+        let repeat el = List.map (fun _ -> el) [0..h]
+        match isHzntl with 
+        | True -> List.map (fun _ -> centres) [0..v]
+        | False -> List.map repeat centres
+
+    let windowsX =
+        makeCentres gridH (ceil (float h / 2.0))
+        |> makeFullLine h gridH
+        |> makeGrid true 
+    let windowsY =
+        makeCentres gridV (ceil (float v / 2.0))
+        |> makeFullLine v gridV
+        |> makeGrid false
+    zip (windowsX, windowsY)
+    |> List.map zip
+
+// given a centre and the dimensions return a list of Lines 
+// this can be used for all the elements, the key is how the centre is found
+let makeElement (centreEl: float) sizeX sizeY =
+    None
+
+let makeAll (centreHouse: float*float) h v  = 
+    let house = makeElement centreHouse Constants.houseL Constants.houseH
+    // door height and window height is the same, divide by 1 + v, the heigh is 8/10 of that with the remaining 1/10 at the top and 1/10 at the bottom 
+    let gridV = Constants.houseV / (1.0 + float v)
+    let fixtureHeight = gridV* 0.8
+    let gridH = Constants.houseH /  float h
+    let fixtureWidth = gridH * 0.8 // set these constants by trial and error
+    let windowsCentre = (fst(centreHouse), snd(centreHouse) + (1.5 * gridV))
+    let doorCentre = (fst(centreHouse), snd(centreHouse)) // need to change!!!! the y is wrong 
+    windows gridH gridV h v 
+    |> List.map (List.map makeElement fixtureHeight fixtureWidth) // will need to change a bit (this is just skeleton)
+    |> List.append makeElement centreHouse Constants.houseL Constants.houseH 
+    |> List.append makeElement doorCentre fixtureHeight (fixtureWidth / 2.0) 
+    
+
+ 
+// TODO 
+// calculate gridH, gridV, sizeX and sizeV from the set dimensions of the house 
+// append to the final list the lines that make the house (given the center and the sizes) 
+// append to the final list the lines that make the door
+    
 let drawSymbolHook 
         (symbol:Symbol) 
         (theme:ThemeType) 
