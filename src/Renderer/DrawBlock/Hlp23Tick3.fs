@@ -58,18 +58,19 @@ type Tick3BusWireHelpers = {
 // complete set of windows.
 let rec zip (a,b) = 
     match (a, b) with
-    | ha :: _, hb :: _ when a.Length = 1 & b.Length = 1 -> [(ha, hb)]
-    | ha :: ta, hb :: tb -> (ha, hb) @ zip (ta, tb)
+    | ha :: _, hb :: _ when a.Length = 1 && b.Length = 1 -> [(ha, hb)]
+    | ha :: ta, hb :: tb -> [(ha, hb)] @ zip (ta, tb)
+    | _ -> failwithf "should not happen, lists should have same size"
 
 // returns a grid of coordinate offsets for the centres of all the windows in the grid 
 // could return window objects (that is something that puts together the lines of a window already)
 // ie a react element list 
 let windows gridH gridV h v = 
     let makeCentres (graph:float) (n:int) : float list = 
-        ([0.0], [0..n]) ||> List.fold (fun centres _ -> [List.head centres + graph] @ centers)
+        ([0.0], [0..n]) ||> List.fold (fun centres _ -> [List.head centres + graph] @ centres)
         |> List.rev
 
-    let makeFullLine (centres: float list) (nTot: int) (grid: float) : float list = 
+    let makeFullLine  (nTot: int) (grid: float) (centres: float list) : float list = 
         let flipCentres (lst: float list) = 
             lst
             |> List.map (fun x -> -x)
@@ -78,22 +79,22 @@ let windows gridH gridV h v =
             List.map (fun x -> x + (grid/ 2.0)) lst
         match nTot with 
         // if odd leave them as is and duplicate all of them apart from the first, reverse and put at beginning
-        | odd when nTot % 2 = 1 -> List.tail >> flipCentres centres @ centres
+        | odd when nTot % 2 = 1 -> (List.tail >> flipCentres) centres @ centres
         // if even add half the offset then reverse and append 
-        | even -> offsetCentres >> flipCentres centres @ (offsetCentres centres)
+        | even -> (offsetCentres >> flipCentres) centres @ offsetCentres centres
 
-    let makeGrid centres isHzntl  = 
+    let makeGrid isHzntl centres =   
         let repeat el = List.map (fun _ -> el) [0..h]
         match isHzntl with 
-        | True -> List.map (fun _ -> centres) [0..v]
-        | False -> List.map repeat centres
+        | true -> List.map (fun _ -> centres) [0..v]
+        | false -> List.map repeat centres
 
     let windowsX =
-        makeCentres gridH (ceil (float h / 2.0))
+        makeCentres gridH (int (ceil (float h / 2.0)))
         |> makeFullLine h gridH
         |> makeGrid true 
     let windowsY =
-        makeCentres gridV (ceil (float v / 2.0))
+        makeCentres gridV (int (ceil (float v / 2.0))) 
         |> makeFullLine v gridV
         |> makeGrid false
     zip (windowsX, windowsY)
@@ -101,22 +102,22 @@ let windows gridH gridV h v =
 
 // given a centre and the dimensions return a list of Lines 
 // this can be used for all the elements, the key is how the centre is found
-let makeElement (centreEl: float) sizeX sizeY =
-    None
+let makeElement sizeX sizeY (centreEl: float * float) =
+    [] 
 
 let makeAll (centreHouse: float*float) h v  = 
-    let house = makeElement centreHouse Constants.houseL Constants.houseH
+    let house = makeElement Constants.houseL Constants.houseH centreHouse 
     // door height and window height is the same, divide by 1 + v, the heigh is 8/10 of that with the remaining 1/10 at the top and 1/10 at the bottom 
-    let gridV = Constants.houseV / (1.0 + float v)
+    let gridV = Constants.houseH / (1.0 + float v)
     let fixtureHeight = gridV* 0.8
     let gridH = Constants.houseH /  float h
     let fixtureWidth = gridH * 0.8 // set these constants by trial and error
     let windowsCentre = (fst(centreHouse), snd(centreHouse) + (1.5 * gridV))
     let doorCentre = (fst(centreHouse), snd(centreHouse)) // need to change!!!! the y is wrong 
     windows gridH gridV h v 
-    |> List.map (List.map makeElement fixtureHeight fixtureWidth) // will need to change a bit (this is just skeleton)
-    |> List.append makeElement centreHouse Constants.houseL Constants.houseH 
-    |> List.append makeElement doorCentre fixtureHeight (fixtureWidth / 2.0) 
+    |> List.map (List.map (makeElement fixtureHeight fixtureWidth)) // will need to change a bit (this is just skeleton)
+    |> List.append (makeElement Constants.houseL Constants.houseH centreHouse )
+    |> List.append (makeElement fixtureHeight (fixtureWidth / 2.0) doorCentre )
     
 
  
@@ -124,6 +125,8 @@ let makeAll (centreHouse: float*float) h v  =
 // calculate gridH, gridV, sizeX and sizeV from the set dimensions of the house 
 // append to the final list the lines that make the house (given the center and the sizes) 
 // append to the final list the lines that make the door
+// actually make function that creates lines and react object 
+
     
 let drawSymbolHook 
         (symbol:Symbol) 
@@ -132,6 +135,18 @@ let drawSymbolHook
     // replace the code below by your own code
     match symbol.Component.Type with
     | Constant1 (width,constValue, _) ->
+        let leftCorner = symbol.Pos 
+        let H = symbol.HScale
+        let V = symbol.VScale
+        // depending on whether H and V are defined the centre of the component is found (not sure whether H and V should be defined
+        // because the description says they are only defined for custom components, does this classify as a custom component?)
+        let centre = 
+            match H, V with
+            | Some h, Some v -> {X = leftCorner.X + (h/2.0); Y = leftCorner.Y + (v/2.0)}
+            | None, None -> {X = leftCorner.X + (Constants.houseH /2.0); Y = (Constants.houseL /2.0)}
+            | _ -> failwithf "should not happen: if one is defined the other one should be defined as well"
+        
+        
         printfn $"CONSTANT: width={width} ConstVale={constValue}"
     | _ -> printfn "Symbol Hook"
     None
