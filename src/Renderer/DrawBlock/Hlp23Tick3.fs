@@ -136,15 +136,11 @@ let drawSymbolHook
     match symbol.Component.Type with
     | Constant1 (width,constValue, _) ->
         let leftCorner = symbol.Pos 
-        let H = symbol.HScale
-        let V = symbol.VScale
+        let H = float symbol.Component.H*(Option.defaultValue 1.0 symbol.VScale)
+        let W = float symbol.Component.W*(Option.defaultValue 1.0 symbol.HScale)
         // depending on whether H and V are defined the centre of the component is found (not sure whether H and V should be defined
         // because the description says they are only defined for custom components, does this classify as a custom component?)
-        let centre = 
-            match H, V with
-            | Some h, Some v -> {X = leftCorner.X + (h/2.0); Y = leftCorner.Y + (v/2.0)}
-            | None, None -> {X = leftCorner.X + (Constants.houseH /2.0); Y = (Constants.houseL /2.0)}
-            | _ -> failwithf "should not happen: if one is defined the other one should be defined as well"
+        let centre = {X = leftCorner.X + (W/2.0); Y = leftCorner.Y + (H/2.0)}
         
         
         printfn $"CONSTANT: width={width} ConstVale={constValue}"
@@ -173,8 +169,18 @@ let updateWireHook
     let segmentInfo =
         wire.Segments
         |> List.map (fun (seg:Segment) -> seg.Length,seg.Mode)
-    printfn "%s" $"Wire: Initial Orientation={wire.InitialOrientation}\nSegments={segmentInfo}"
-    None
+    match wire.Segments with 
+    | [_; _; l; _; r; _; _] when l.Length > 0.0 && r.Length > 0.0 -> 
+        let hzntlDistance = l.Length + r.Length
+        let newSegments = 
+            wire.Segments
+            |> List.updateAt 2 {l with Length = (0.3 * hzntlDistance)}
+            |> List.updateAt 4  {r with Length = (0.7 * hzntlDistance)}
+        let newWire = {wire with Segments = newSegments}
+        printfn "%s" $"Wire: Initial Orientation={wire.InitialOrientation}\nSegments={segmentInfo}"
+        Some(newWire)
+    | _ -> None
+
 
 //---------------------------------------------------------------------//
 //-------included here because it will be used in project work---------//
