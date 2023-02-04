@@ -25,8 +25,8 @@ open Symbol
 
 /// submodule for constant definitions used in this module
 module Constants =
-    let houseH = 111.0
-    let houseL = 111.0
+    let houseW = 200.0
+    let houseH = 300.0
 
 /// Record containing BusWire helper functions that might be needed by updateWireHook
 /// functions are fed in at the updatewireHook function call in BusWireUpdate.
@@ -34,11 +34,10 @@ module Constants =
 /// the functions cannot be called directly.
 /// Add functions as needed.
 /// NB these helpers are not needed to do Tick3
-type Tick3BusWireHelpers = {
-    AutoRoute: BusWireT.Model -> Wire -> Wire
-    ReverseWire: Wire -> Wire
-    MoveSegment: Model -> Segment -> float -> Wire
-    }
+type Tick3BusWireHelpers =
+    { AutoRoute: BusWireT.Model -> Wire -> Wire
+      ReverseWire: Wire -> Wire
+      MoveSegment: Model -> Segment -> float -> Wire }
 
 
 /// Return Some reactElement list to replace drawSymbol by your own code
@@ -51,101 +50,103 @@ type Tick3BusWireHelpers = {
 //  for Tick 3 see the Tick 3 Powerpoint for what you need to do.
 //  the house picture, and its dependence on the two parameters, will be assessed via interview.
 
-// this function takes in the distance between the centers of the windows 
-// and the number of windows (which will be the actual number divided 
-// by 2). It returns a list of offsets from the center (which are all the 
-// windows centers on one side. This will be flipped appropriately to make the 
+// this function takes in the distance between the centers of the windows
+// and the number of windows (which will be the actual number divided
+// by 2). It returns a list of offsets from the center (which are all the
+// windows centers on one side. This will be flipped appropriately to make the
 // complete set of windows.
-let rec zip (a,b) = 
+let rec zip (a, b) =
     match (a, b) with
-    | ha :: _, hb :: _ when a.Length = 1 && b.Length = 1 -> [(ha, hb)]
-    | ha :: ta, hb :: tb -> [(ha, hb)] @ zip (ta, tb)
-    | _ -> failwithf "should not happen, lists should have same size"
+    | ha :: _, hb :: _ when a.Length = 1 && b.Length = 1 -> [ (ha, hb) ]
+    | ha :: ta, hb :: tb -> [ (ha, hb) ] @ zip (ta, tb)
+    | _ -> failwithf "should not happen, can't zip lists of different length"
 
-// returns a grid of coordinate offsets for the centres of all the windows in the grid 
+// returns a grid of coordinate offsets for the centres of all the windows in the grid
 // could return window objects (that is something that puts together the lines of a window already)
-// ie a react element list 
-let windows gridH gridV h v = 
-    let makeCentres (graph:float) (n:int) : float list = 
-        ([0.0], [0..n]) ||> List.fold (fun centres _ -> [List.head centres + graph] @ centres)
+// ie a react element list
+let windows gridH gridV h v =
+
+    let makeCentres grid n : float list =
+        ([ 0.0 ], [ 0 .. n - 2 ])
+        ||> List.fold (fun centres _ -> [ List.head centres + grid ] @ centres)
         |> List.rev
 
-    let makeFullLine  (nTot: int) (grid: float) (centres: float list) : float list = 
-        let flipCentres (lst: float list) = 
-            lst
-            |> List.map (fun x -> -x)
-            |> List.rev
-        let offsetCentres (lst: float list) = 
-            List.map (fun x -> x + (grid/ 2.0)) lst
-        match nTot with 
+    let makeFullLine nTot grid centres =
+        let flipCentres lst =
+            (List.rev >> List.map (fun x -> -x)) lst
+
+        let offsetCentres (lst: float list) =
+            List.map (fun x -> x + (grid / 2.0)) lst
         // if odd leave them as is and duplicate all of them apart from the first, reverse and put at beginning
+        // if even add half the offset then reverse and append
+        match nTot with
         | odd when nTot % 2 = 1 -> (List.tail >> flipCentres) centres @ centres
-        // if even add half the offset then reverse and append 
         | even -> (offsetCentres >> flipCentres) centres @ offsetCentres centres
 
-    let makeGrid isHzntl centres =   
-        let repeat el = List.map (fun _ -> el) [0..h]
-        match isHzntl with 
-        | true -> List.map (fun _ -> centres) [0..v]
+    let makeGrid isHzntl centres =
+        let repeat el = List.map (fun _ -> el) [ 0 .. h - 1 ]
+
+        match isHzntl with
+        | true -> List.map (fun _ -> centres) [ 0 .. v - 1 ]
         | false -> List.map repeat centres
 
-    let windowsX =
-        makeCentres gridH (int (ceil (float h / 2.0)))
-        |> makeFullLine h gridH
-        |> makeGrid true 
-    let windowsY =
-        makeCentres gridV (int (ceil (float v / 2.0))) 
-        |> makeFullLine v gridV
-        |> makeGrid false
-    zip (windowsX, windowsY)
-    |> List.map zip
+    let combine grid n isHzntl =
+        makeCentres grid (int (ceil (float n / 2.0)))
+        |> makeFullLine n grid
+        |> makeGrid isHzntl
 
-// given a centre and the dimensions return a list of Lines 
+    let windowsX = combine gridH h true
+    let windowsY = combine gridV v false
+    zip (windowsX, windowsY) |> List.map zip
+
+// given a centre and the dimensions return a list of Lines
 // this can be used for all the elements, the key is how the centre is found
-let makeElement sizeX sizeY (centreEl: float * float) =
-    [] 
+// there is definitely a better way to do this
+let makeElement sizeX sizeY line (centreEl: XYPos) =
+    let offsetX = sizeX / 2.0
+    let offsetY = sizeY / 2.0
+    let left = centreEl.X - offsetX
+    let right = centreEl.X + offsetX
+    let top = centreEl.Y - offsetY
+    let bottom = centreEl.Y + offsetY
 
-let makeAll (centreHouse: float*float) h v  = 
-    let house = makeElement Constants.houseL Constants.houseH centreHouse 
-    // door height and window height is the same, divide by 1 + v, the heigh is 8/10 of that with the remaining 1/10 at the top and 1/10 at the bottom 
+    []
+    |> List.append [ makeLine left top right top line ]
+    |> List.append [ makeLine left top left bottom line ]
+    |> List.append [ makeLine right top right bottom line ]
+    |> List.append [ makeLine left bottom right bottom line ]
+
+let makeAll h v =
+    let getXYPos (x, y) = { X = x; Y = y }
+    // door height and window height is the same, divide by 1 + v, the heigh is 8/10 of that with the remaining 1/10 at the top and 1/10 at the bottom
     let gridV = Constants.houseH / (1.0 + float v)
-    let fixtureHeight = gridV* 0.8
-    let gridH = Constants.houseH /  float h
-    let fixtureWidth = gridH * 0.8 // set these constants by trial and error
-    let windowsCentre = (fst(centreHouse), snd(centreHouse) + (1.5 * gridV))
-    let doorCentre = (fst(centreHouse), snd(centreHouse)) // need to change!!!! the y is wrong 
-    windows gridH gridV h v 
-    |> List.map (List.map (makeElement fixtureHeight fixtureWidth)) // will need to change a bit (this is just skeleton)
-    |> List.append (makeElement Constants.houseL Constants.houseH centreHouse )
-    |> List.append (makeElement fixtureHeight (fixtureWidth / 2.0) doorCentre )
-    
+    let fixtureHeight = gridV * 0.8
+    let gridH = Constants.houseW / float h
+    let fixtureWidth = gridH * 0.7 // set these constants by trial and error
 
- 
-// TODO 
-// calculate gridH, gridV, sizeX and sizeV from the set dimensions of the house 
-// append to the final list the lines that make the house (given the center and the sizes) 
-// append to the final list the lines that make the door
-// actually make function that creates lines and react object 
+    let doorCentre =
+        { X = 0.0
+          Y = (Constants.houseH / 2.0 - (fixtureHeight / 2.0)) } // need to change!!!! the y is wrong
 
-    
-let drawSymbolHook 
-        (symbol:Symbol) 
-        (theme:ThemeType) 
-        : ReactElement list option =
+    let houseCentre = { X = 0.0; Y = 0.0 }
+
+    windows gridH gridV h v
+    |> List.map (List.map getXYPos)
+    |> List.map (List.map (makeElement fixtureWidth fixtureHeight { defaultLine with StrokeWidth = "2px" })) // will need to change a bit (this is just skeleton)
+    |> List.concat
+    |> List.concat
+    |> List.append (makeElement Constants.houseW Constants.houseH { defaultLine with StrokeWidth = "4px" } houseCentre)
+    |> List.append (makeElement (fixtureWidth / 2.0) fixtureHeight { defaultLine with StrokeWidth = "2px" } doorCentre)
+
+let drawSymbolHook (symbol: Symbol) (theme: ThemeType) : ReactElement list option =
     // replace the code below by your own code
     match symbol.Component.Type with
-    | Constant1 (width,constValue, _) ->
-        let leftCorner = symbol.Pos 
-        let H = float symbol.Component.H*(Option.defaultValue 1.0 symbol.VScale)
-        let W = float symbol.Component.W*(Option.defaultValue 1.0 symbol.HScale)
-        // depending on whether H and V are defined the centre of the component is found (not sure whether H and V should be defined
-        // because the description says they are only defined for custom components, does this classify as a custom component?)
-        let centre = {X = leftCorner.X + (W/2.0); Y = leftCorner.Y + (H/2.0)}
-        
-        
+    | Constant1(width, constValue, _) ->
         printfn $"CONSTANT: width={width} ConstVale={constValue}"
-    | _ -> printfn "Symbol Hook"
-    None
+        Some(makeAll width (int constValue))
+    | _ ->
+        printfn "Symbol Hook"
+        None
 
 /// Return Some newWire to replace updateWire by your own code defined here.
 /// Choose which wires you control by returning None to use the
@@ -154,29 +155,33 @@ let drawSymbolHook
 /// See updateWire for the default autoroute wire update function.
 /// The return value must be a (possibly modified) copy of wire.
 
-// For tick 3 modify the updated wires (in some cases) somehow. 
+// For tick 3 modify the updated wires (in some cases) somehow.
 // e.g. if they have 3 visual segments and have a standard (you decide what) orientation change where the middle
 // segment is on screen so it is 1/3 of the way between the two components instead of 1/2.
 // do something more creative or useful if you like.
 // This part of Tick will pass if you can demo one wire changing as you move a symbol in some way different from
 // Issie: the change need not work on all quadrants (where it is not implemented the wire should default to
 // Issie standard.
-let updateWireHook 
-        (model: BusWireT.Model) 
-        (wire: Wire) 
-        (tick3Helpers: Tick3BusWireHelpers)
-        : Wire option =
+let updateWireHook (model: BusWireT.Model) (wire: Wire) (tick3Helpers: Tick3BusWireHelpers) : Wire option =
     let segmentInfo =
-        wire.Segments
-        |> List.map (fun (seg:Segment) -> seg.Length,seg.Mode)
-    match wire.Segments with 
-    | [_; _; l; _; r; _; _] when l.Length > 0.0 && r.Length > 0.0 -> 
+        wire.Segments |> List.map (fun (seg: Segment) -> seg.Length, seg.Mode)
+
+    match wire.Segments with
+    | [ _; _; l; _; r; _; _ ] when l.Length > 0.0 && r.Length > 0.0 ->
         let hzntlDistance = l.Length + r.Length
-        let newSegments = 
+
+        let newSegments =
             wire.Segments
-            |> List.updateAt 2 {l with Length = (0.3 * hzntlDistance)}
-            |> List.updateAt 4  {r with Length = (0.7 * hzntlDistance)}
-        let newWire = {wire with Segments = newSegments}
+            |> List.updateAt
+                2
+                { l with
+                    Length = (0.3 * hzntlDistance) }
+            |> List.updateAt
+                4
+                { r with
+                    Length = (0.7 * hzntlDistance) }
+
+        let newWire = { wire with Segments = newSegments }
         printfn "%s" $"Wire: Initial Orientation={wire.InitialOrientation}\nSegments={segmentInfo}"
         Some(newWire)
     | _ -> None
@@ -194,23 +199,23 @@ let updateWireHook
 ///
 /// wireIds is the list of wire ids that have one end connected to a
 /// moved symbol.
-/// Any required change in wire positions or shapes should be returned by 
+/// Any required change in wire positions or shapes should be returned by
 /// changing the values of busWireModel.Wires which
 /// is a Map<ConnectionId , Wire> and contains all wires
 /// keyed by their wire Id (type ConnectionId)
-/// No change required for Tick 3 
+/// No change required for Tick 3
 let smartAutoRouteWires
-        (wireIds: ConnectionId list) 
-        (tick3Helpers: Tick3BusWireHelpers)
-        (model: SheetT.Model) 
-        : SheetT.Model =
+    (wireIds: ConnectionId list)
+    (tick3Helpers: Tick3BusWireHelpers)
+    (model: SheetT.Model)
+    : SheetT.Model =
     let busWireModel = model.Wire // contained as field of Sheet model
     let symbolModel = model.Wire.Symbol // contained as field of BusWire Model
     let wires = busWireModel.Wires // all wire info
     // NB to return updated wires here you would need nested record update
     // {model with Wire = {model.Wire with Wires = wires'}}
     // Better syntax to do that can be found using optics lenses
-    // see DrawModelT for already defined lenses and Issie wiki 
+    // see DrawModelT for already defined lenses and Issie wiki
     // for how they work
     model // no smart autoroute for now, so return model with no chnage
 
