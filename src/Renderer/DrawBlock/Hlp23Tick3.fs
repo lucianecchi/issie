@@ -55,11 +55,6 @@ type Tick3BusWireHelpers =
 // by 2). It returns a list of offsets from the center (which are all the
 // windows centers on one side. This will be flipped appropriately to make the
 // complete set of windows.
-let rec zip (a, b) =
-    match (a, b) with
-    | ha :: _, hb :: _ when a.Length = 1 && b.Length = 1 -> [ (ha, hb) ]
-    | ha :: ta, hb :: tb -> [ (ha, hb) ] @ zip (ta, tb)
-    | _ -> failwithf "should not happen, can't zip lists of different length"
 
 // returns a grid of coordinate offsets for the centres of all the windows in the grid
 // could return window objects (that is something that puts together the lines of a window already)
@@ -80,7 +75,7 @@ let windows gridH gridV h v =
         // if odd leave them as is and duplicate all of them apart from the first, reverse and put at beginning
         // if even add half the offset then reverse and append
         match nTot with
-        | odd when nTot % 2 = 1 -> (List.tail >> flipCentres) centres @ centres
+        | odd when odd % 2 = 1 -> (List.tail >> flipCentres) centres @ centres
         | even -> (offsetCentres >> flipCentres) centres @ offsetCentres centres
 
     let makeGrid isHzntl centres =
@@ -97,7 +92,7 @@ let windows gridH gridV h v =
 
     let windowsX = combine gridH h true
     let windowsY = combine gridV v false
-    zip (windowsX, windowsY) |> List.map zip
+    List.zip windowsX windowsY |> List.map (fun (lst1, lst2) -> List.zip lst1 lst2)
 
 // given a centre and the dimensions return a list of Lines
 // this can be used for all the elements, the key is how the centre is found
@@ -122,21 +117,27 @@ let makeAll h v =
     let gridV = Constants.houseH / (1.0 + float v)
     let fixtureHeight = gridV * 0.8
     let gridH = Constants.houseW / float h
-    let fixtureWidth = gridH * 0.7 // set these constants by trial and error
+    let fixtureWidth = gridH * 0.7 
 
     let doorCentre =
         { X = 0.0
-          Y = (Constants.houseH / 2.0 - (fixtureHeight / 2.0)) } // need to change!!!! the y is wrong
+          Y = (Constants.houseH / 2.0 - (fixtureHeight / 2.0)) }
 
     let houseCentre = { X = 0.0; Y = 0.0 }
 
-    windows gridH gridV h v
-    |> List.map (List.map getXYPos)
-    |> List.map (List.map (makeElement fixtureWidth fixtureHeight { defaultLine with StrokeWidth = "2px" })) // will need to change a bit (this is just skeleton)
-    |> List.concat
-    |> List.concat
-    |> List.append (makeElement Constants.houseW Constants.houseH { defaultLine with StrokeWidth = "4px" } houseCentre)
-    |> List.append (makeElement (fixtureWidth / 2.0) fixtureHeight { defaultLine with StrokeWidth = "2px" } doorCentre)
+    let outlineWindows =
+        windows gridH gridV h v
+        |> List.map (List.map (fun (x, y) -> (x, y - fixtureHeight / 2.0)))
+        |> List.map (List.map getXYPos)
+        |> List.collect (List.collect (makeElement fixtureWidth fixtureHeight { defaultLine with StrokeWidth = "2px" })) // will need to change a bit (this is just skeleton)
+
+    let outlineHouse =
+        makeElement Constants.houseW Constants.houseH { defaultLine with StrokeWidth = "4px" } houseCentre
+
+    let outlineDoor =
+        makeElement (fixtureWidth / 2.0) fixtureHeight { defaultLine with StrokeWidth = "2px" } doorCentre
+
+    outlineWindows @ outlineHouse @ outlineDoor
 
 let drawSymbolHook (symbol: Symbol) (theme: ThemeType) : ReactElement list option =
     // replace the code below by your own code
